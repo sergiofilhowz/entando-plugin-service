@@ -1,0 +1,8 @@
+CREATE TABLE configuration (
+  id SERIAL NOT NULL PRIMARY KEY,
+  created_at TIMESTAMP NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  client VARCHAR(64) NOT NULL,
+  version VARCHAR(10) NOT NULL,
+  content TEXT NOT NULL
+);
