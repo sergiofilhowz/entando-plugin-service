@@ -54,7 +54,6 @@ public class PluginService {
                 .collect(Collectors.toList());
     }
 
-    @SuppressWarnings("unchecked")
     private EntandoPlugin map(final Plugin plugin) {
         try {
             final EntandoPlugin result = new EntandoPlugin();

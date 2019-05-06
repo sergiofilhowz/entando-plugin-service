@@ -6,9 +6,11 @@ import org.entando.plugin.registry.model.EntandoPluginDeployment;
 import org.entando.plugin.registry.model.ExternalService;
 import org.entando.plugin.registry.model.PropertyConfig;
 import org.entando.plugin.registry.response.EntandoPluginDeploymentResponse;
+import org.springframework.stereotype.Service;
 
 import static java.util.Optional.ofNullable;
 
+@Service("ExternalServiceConfigurer.DATABASE")
 public class DatabaseExternalServiceConfigurer implements ExternalServiceConfigurer {
 
     private static final String PORT = "database.port";
@@ -16,6 +18,7 @@ public class DatabaseExternalServiceConfigurer implements ExternalServiceConfigu
     private static final String NAME = "database.name";
     private static final String USER = "database.user";
     private static final String PASS = "database.pass";
+    private static final String HOST_AND_PORT = "database.hostAndPort";
 
     @Override
     public void config(final EntandoPluginDeployment deployment,
@@ -30,21 +33,30 @@ public class DatabaseExternalServiceConfigurer implements ExternalServiceConfigu
 
     private String resolveValue(final PropertyConfig property,
                                 final EntandoPluginDeployment deployment,
-                                final EntandoPluginDeploymentResponse externalServiceDeployment) {
+                                final EntandoPluginDeploymentResponse external) {
 
         if (StringUtils.isNotEmpty(property.getId())) {
             // TODO generify to Postgres, Oracle, etc
             switch (property.getId()) {
-                case PORT: return "3306";
-                case HOST: return externalServiceDeployment.getIp();
+                case PORT: return getPort();
+                case HOST: return getHost(external);
                 case NAME: return resolveDatabaseName(deployment);
-                case USER: return externalServiceDeployment.getEnvVariables().get("MYSQL_USER");
-                case PASS: return externalServiceDeployment.getEnvVariables().get("MYSQL_PASSWORD");
+                case USER: return external.getEnvVariables().get("MYSQL_USER");
+                case PASS: return external.getEnvVariables().get("MYSQL_PASSWORD");
+                case HOST_AND_PORT: return getHost(external) + ":" + getPort();
                 default: return null;
             }
         }
 
         return StringUtils.isNotEmpty(property.getValue()) ? property.getValue() : null;
+    }
+
+    private String getHost(final EntandoPluginDeploymentResponse external) {
+        return external.getIp();
+    }
+
+    private String getPort() {
+        return "3306";
     }
 
     private String resolveDatabaseName(final EntandoPluginDeployment deployment) {

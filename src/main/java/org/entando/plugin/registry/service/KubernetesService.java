@@ -19,8 +19,7 @@ import org.entando.plugin.registry.model.EntandoPluginDeployment;
 import org.entando.plugin.registry.model.EnvironmentVariable;
 import org.entando.plugin.registry.model.ExternalService;
 import org.entando.plugin.registry.response.EntandoPluginDeploymentResponse;
-import org.entando.plugin.registry.service.external.DatabaseExternalServiceConfigurer;
-import org.entando.plugin.registry.service.external.ExternalServiceConfigurer;
+import org.entando.plugin.registry.service.external.ExternalServiceConfigurerResolver;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
@@ -41,9 +40,10 @@ public class KubernetesService {
 
     private final @NonNull KubernetesClient client;
     private final @NonNull PluginService pluginService;
+    private final @NonNull ExternalServiceConfigurerResolver configurerResolver;
 
     private static final String namespace = "entando";
-    private static final String host = "entando.local";
+    private static final String host = "dev.entando.org";
 
     public EntandoPluginDeploymentResponse getDeployment(final String pluginId) {
         return ofNullable(client.apps().deployments()
@@ -62,12 +62,10 @@ public class KubernetesService {
                     .collect(Collectors.toMap(EnvVar::getName, EnvVar::getValue));
         }).ifPresent(response::setEnvVariables);
 
-//        deployment.getSpec().getTemplate().getSpec().getContainers().get(0).getPorts().get(0).g
-
         client.pods().inNamespace(namespace).withLabel("entandoPlugin=" + pluginId).list().getItems().stream()
                 .map(Pod::getStatus)
                 .map(PodStatus::getPodIP)
-                .findAny().ifPresent(response::setIp);
+                .findFirst().ifPresent(response::setIp);
 
         return response;
     }
@@ -80,8 +78,7 @@ public class KubernetesService {
         setEnvs(pluginDeployment, plugin);
 
         final boolean hasPath = isNotEmpty(pluginDeployment.getPath());
-
-        final Service service = newService(plugin, "LoadBalancer");
+        final Service service = newService(plugin);
         client.services().inNamespace(namespace).create(service);
 
         if (hasPath) {
@@ -102,20 +99,17 @@ public class KubernetesService {
                 // should we throw an error on not found external service?
                 ofNullable(plugin.getExternalServices().get(key))
                         .map(e -> e.stream().filter(s -> s.getId().equals(value))
-                                .findFirst().orElse(null)).ifPresent(service -> configureService(pluginDeployment, service));
+                                .findFirst().orElse(null)).ifPresent(service -> configureService(key, pluginDeployment, service));
             })
         );
     }
 
-    private void configureService(final EntandoPluginDeployment pluginDeployment, final ExternalService service) {
+    private void configureService(final String serviceType,
+                                  final EntandoPluginDeployment pluginDeployment,
+                                  final ExternalService service) {
         final EntandoPluginDeploymentResponse deployment = ofNullable(getDeployment(service.getId()))
                 .orElseThrow(() -> new ExternalServiceNotInstalledException(service.getId()));
-        resolveConfigurer(service).config(pluginDeployment, service, deployment);
-    }
-
-    private ExternalServiceConfigurer resolveConfigurer(final ExternalService externalService) {
-        // TODO create a Strategy Resolver
-        return new DatabaseExternalServiceConfigurer();
+        configurerResolver.resolve(serviceType).config(pluginDeployment, service, deployment);
     }
 
     private Ingress newIngress(final EntandoPluginDeployment pluginDeployment, final EntandoPlugin plugin) {
@@ -163,14 +157,14 @@ public class KubernetesService {
         ).collect(Collectors.toList());
     }
 
-    private Service newService(final EntandoPlugin plugin, final String type) {
+    private Service newService(final EntandoPlugin plugin) {
         return new ServiceBuilder()
                 .withMetadata(from(plugin, "-service"))
                 .withNewSpec()
                 .withSelector(labelsFrom(plugin))
                 .addNewPort().withName("http-port").withProtocol("TCP").withPort(plugin.getPort())
                 .withTargetPort(new IntOrString(plugin.getPort())).endPort()
-                .withType(type)
+                .withType("LoadBalancer")
                 .endSpec()
                 .build();
     }
